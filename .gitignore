@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.env
+.DS_Store
+
+# Data and model artifacts live on the Hugging Face Hub, not in git.
+/data/
+/outputs/
+/checkpoints/
+*.onnx
+*.safetensors

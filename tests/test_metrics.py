@@ -116,3 +116,19 @@ def test_mismatched_doc_ids_raise():
 def test_mismatched_text_raises():
     with pytest.raises(ValueError, match="text differs"):
         evaluate([GOLD], [Document("d1", TEXT.upper(), ())], n_boot=0)
+
+
+def test_ignore_region_drops_unmatched_prediction():
+    gold = Document("d", "Visit https://example.com/me now", ())
+    p = pred(Span(6, 28, "URL_PERSONAL"), doc=gold)
+    for partial in (False, True):
+        assert match_counts(gold, p, partial=partial)["URL_PERSONAL"] == [0, 1, 0]
+        assert match_counts(gold, p, partial=partial, ignore=[(6, 28)])["URL_PERSONAL"] == [0, 0, 0]
+    r = evaluate([gold], [p], n_boot=0, ignore={"d": [(6, 28)]})
+    assert r["strict"]["micro"]["fp"] == 0
+
+
+def test_ignore_region_does_not_hide_boundary_errors_on_gold():
+    gold = Document("d", "Ann Lee at https://example.com", (Span(0, 7, "PERSON"),))
+    p = pred(Span(0, 30, "PERSON"), doc=gold)  # overlaps gold and the ignore region
+    assert match_counts(gold, p, partial=False, ignore=[(11, 30)])["PERSON"] == [0, 1, 1]

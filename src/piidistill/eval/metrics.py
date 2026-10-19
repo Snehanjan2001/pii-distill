@@ -5,6 +5,9 @@ Conventions (cite these next to any reported number):
 - Partial match: same label and at least one overlapping character, matched one-to-one.
 - A ratio with a zero denominator is 0.0. A type with no gold spans has recall/F1 None
   and is left out of the macro average.
+- Ignore regions (optional, per doc): an unmatched prediction that overlaps an ignore region
+  and no gold span is dropped, not counted as a false positive. Used for text that is
+  plausibly PII but outside the gold labels' scope.
 - Headline numbers are micro-averaged over spans. CIs resample documents, not spans,
   because spans within a document are correlated.
 """
@@ -33,9 +36,18 @@ def _overlaps(a: Span, start: int, end: int) -> bool:
     return a.start < end and start < a.end
 
 
-def match_counts(gold: Document, pred: Document, partial: bool) -> dict[str, list[int]]:
+def match_counts(
+    gold: Document, pred: Document, partial: bool, ignore: Iterable[tuple[int, int]] = ()
+) -> dict[str, list[int]]:
     """Per-label [tp, fp, fn] for one document."""
     counts: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
+    ignore = list(ignore)
+
+    def ignored(p: Span) -> bool:
+        return any(_overlaps(p, a, b) for a, b in ignore) and not any(
+            _overlaps(g, p.start, p.end) for g in gold.spans
+        )
+
     if partial:
         # Greedy left-to-right is a maximum matching here: within one document the spans
         # on each side are sorted and non-overlapping (Document enforces it).
@@ -45,7 +57,8 @@ def match_counts(gold: Document, pred: Document, partial: bool) -> dict[str, lis
                 (g for g in unmatched if g.label == p.label and _overlaps(g, p.start, p.end)), None
             )
             if hit is None:
-                counts[p.label][1] += 1
+                if not ignored(p):
+                    counts[p.label][1] += 1
             else:
                 unmatched.remove(hit)
                 counts[p.label][0] += 1
@@ -56,7 +69,8 @@ def match_counts(gold: Document, pred: Document, partial: bool) -> dict[str, lis
         for s in gold_set & pred_set:
             counts[s.label][0] += 1
         for s in pred_set - gold_set:
-            counts[s.label][1] += 1
+            if not ignored(s):
+                counts[s.label][1] += 1
         for s in gold_set - pred_set:
             counts[s.label][2] += 1
     return counts
@@ -78,9 +92,17 @@ def _percentile_ci(values: list[float]) -> tuple[float, float]:
 
 
 def evaluate(
-    gold: Iterable[Document], pred: Iterable[Document], n_boot: int = 1000, seed: int = 0
+    gold: Iterable[Document],
+    pred: Iterable[Document],
+    n_boot: int = 1000,
+    seed: int = 0,
+    ignore: dict[str, list[tuple[int, int]]] | None = None,
 ) -> dict:
-    """Score predictions against gold. Both sides must contain exactly the same doc ids."""
+    """Score predictions against gold. Both sides must contain exactly the same doc ids.
+
+    `ignore` maps doc id -> ignore regions, as returned by data.io.read_jsonl.
+    """
+    ignore = ignore or {}
     gold_by_id = {d.id: d for d in gold}
     pred_by_id = {d.id: d for d in pred}
     if gold_by_id.keys() != pred_by_id.keys():
@@ -100,7 +122,9 @@ def evaluate(
         by_type: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
         doc_totals = []
         for i in ids:
-            c = match_counts(gold_by_id[i], pred_by_id[i], partial=mode == "partial")
+            c = match_counts(
+                gold_by_id[i], pred_by_id[i], partial=mode == "partial", ignore=ignore.get(i, ())
+            )
             for label, (tp, fp, fn) in c.items():
                 by_type[label][0] += tp
                 by_type[label][1] += fp

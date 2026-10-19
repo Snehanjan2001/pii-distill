@@ -1,8 +1,9 @@
 # Annotation guidelines
 
-Version 0.2 (draft). These rules apply to the gold set, the dev set, teacher prompts and
-validators alike. If a rule changes after gold annotation starts, bump the version and
-re-annotate the affected documents.
+Version 0.3. These rules apply to teacher prompts, validators and the eval sets alike.
+The dev and gold sets are mapped from Nemotron-PII (see `docs/eval_sets.md`), and v0.3
+aligns the rules below with that source wherever they disagreed. If a rule changes, bump the
+version and rebuild or relabel whatever depends on it.
 
 All examples are fictional.
 
@@ -70,11 +71,12 @@ number, tax ID or similar.
 
 ### CREDIT_CARD
 A payment card number (PAN), full or partially masked.
-- Expiry date and CVV are **not** part of the CREDIT_CARD span. Label each one as SECRET,
-  value only (`CVV 913` → `913`, `exp 08/29` → `08/29`).
+- The CVV is **not** part of the CREDIT_CARD span; label it SECRET (`CVV 913` → `913`).
+- The expiry date is **not labeled** (`exp 08/29`): on its own it identifies no one.
 
 ### BANK_ACCOUNT
-An IBAN, an account number, or a routing number paired with an account.
+A financial account identifier: IBAN, bank, brokerage, loan or billing account number, or a
+bank routing number (also on its own).
 - A SWIFT/BIC code on its own identifies a bank, not a person, so it is not labeled.
 
 ### IP_ADDRESS
@@ -83,18 +85,19 @@ An IPv4 or IPv6 address of a host or user.
 - Exclude: version strings that look like IPs (`v1.2.3.4`), and netmasks on their own.
 
 ### USERNAME
-A login handle or account name: `@jdoe_88`, `user: mkowalski`.
-- Include the leading `@` when it is written as part of the handle (`@jdoe_88`).
+A login handle or account name: `jdoe_88`, `user: mkowalski`.
+- Exclude a leading `@` (`@jdoe_88` → `jdoe_88`).
 
 ### SECRET
 A credential that grants access: password, API key, access token, private key, a
-connection string containing a password, or a card's CVV or expiry date.
+connection string containing a password, a PIN, or a card's CVV.
 - For a connection string, the span is the password part only, unless the whole string is a
   single opaque token.
 
 ### ORG_ID
 An identifier that an organisation assigns to an individual: employee ID, customer number,
-patient or medical record number, student ID, membership number.
+patient or medical record number, health plan beneficiary number, student ID, membership
+number.
 - Order numbers, ticket numbers and invoice numbers are **not** ORG_ID unless the context ties
   them to identifying a person.
 
@@ -103,6 +106,8 @@ A URL that points to a specific individual: a social profile, personal site, or 
 personal tokens in it.
 - Include: `https://linkedin.com/in/ana-souza-1234`, a password-reset link with a token.
 - Exclude: a company homepage or a public docs page.
+- Not scored on the v1 eval sets: Nemotron's `url` label mixes personal and company URLs, so
+  URLs there are ignore regions (see `docs/eval_sets.md`).
 
 ## Hard cases
 
@@ -114,13 +119,17 @@ personal tokens in it.
 | `appointment on 2024-05-02` | none | a date that is not a birth date |
 | `password: hunter2!` | SECRET `hunter2!` | `!` is part of the value |
 | `support@acme-example.com` | EMAIL | role address, labeled for recall |
-| `card 4111 1111 1111 1111 exp 08/29 CVV 913` | CREDIT_CARD the number, SECRET `08/29`, SECRET `913` | three separate spans |
-| `ping @jdoe_88` | USERNAME `@jdoe_88` | `@` is part of the handle |
+| `card 4111 1111 1111 1111 exp 08/29 CVV 913` | CREDIT_CARD the number, SECRET `913` | expiry is not labeled |
+| `ping @jdoe_88` | USERNAME `jdoe_88` | `@` stays outside |
+| `PIN: 945076` | SECRET `945076` | a PIN grants access |
 
 ## Open questions
 
 Log ambiguous cases here as they come up, with the decision and the date.
 
 - 2026-10-19: role email addresses are labeled EMAIL.
-- 2026-10-19: the `@` prefix is included in USERNAME spans.
-- 2026-10-19: CVV and card expiry date are labeled SECRET.
+- 2026-10-19: CVV is labeled SECRET.
+- 2026-10-19 (v0.3, aligned with Nemotron-PII): the `@` prefix is excluded from USERNAME;
+  card expiry is not labeled; BANK_ACCOUNT covers any financial account number and routing
+  numbers on their own; PIN is SECRET; health plan beneficiary number is ORG_ID.
+  Supersedes the earlier `@` and expiry decisions.

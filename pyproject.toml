@@ -10,6 +10,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
+# Only for scripts/build_eval_sets.py; the package itself never imports pyarrow.
+data = ["pyarrow>=17"]
 
 [build-system]
 requires = ["hatchling"]
